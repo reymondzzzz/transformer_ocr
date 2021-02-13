@@ -4,13 +4,13 @@ from typing import List, Dict
 
 import numpy as np
 
-from transformer_ocr.data.data_preparation import Pipeline, LoadImageWithCrop, TextToSequence, \
+from ocr.data.data_preparation import Pipeline, LoadImageWithCrop, TextToSequence, \
     FinalResizeWithAspectRatioAndTranspose, Sometimes, KillerAugmentator, OneOf
-from transformer_ocr.data.dataset import BaseDataset
+from ocr.data.dataset import BaseDataset
 import json
 from pathlib import Path
-import transformer_ocr.config as config
-from transformer_ocr.data.plate_extracter import PlateExtractorWithAugment, PlateExtractor
+import ocr.config as config
+from ocr.data.plate_extracter import PlateExtractorWithAugment, PlateExtractor
 
 
 class RealDataset(BaseDataset):

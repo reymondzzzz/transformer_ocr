@@ -1,0 +1,5 @@
+.idea
+*.pyc
+*.ckpt
+lightning_logs
+wandb

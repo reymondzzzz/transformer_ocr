@@ -1,10 +1,10 @@
 import numpy as np
 
-import transformer_ocr.config as config
-from transformer_ocr.data.data_preparation import Pipeline, TextToSequence, FinalResizeWithAspectRatioAndTranspose, \
+import ocr.config as config
+from ocr.data.data_preparation import Pipeline, TextToSequence, FinalResizeWithAspectRatioAndTranspose, \
     FakeAugmentator
-from transformer_ocr.data.dataset import BaseDataset
-from transformer_ocr.data.fake_generator import FakeGenerator
+from ocr.data.dataset import BaseDataset
+from ocr.datasets.fake_generator import FakeGenerator
 
 
 class FakeDataset(BaseDataset):

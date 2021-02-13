@@ -2,8 +2,8 @@ from typing import Tuple
 
 import cv2
 
-from transformer_ocr.data.augment import augment_real_lpr4
-from transformer_ocr.data.data_preparation import BaseDataProcessCallable
+from ocr.data.augment import augment_real_lpr4
+from ocr.data.data_preparation import BaseDataProcessCallable
 import numpy as np
 
 

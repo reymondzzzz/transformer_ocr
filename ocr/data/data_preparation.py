@@ -4,10 +4,10 @@ import torch
 import cv2
 import numpy as np
 
-import transformer_ocr.config as config
-from transformer_ocr.utils import load_image_with_crop, resize_with_aspect_ratio
-from transformer_ocr.data.augment import FakeAugmentator as _FakeAugmentator
-from transformer_ocr.data.augment import KillerAugmentator as _KillerAugmentator
+import ocr.config as config
+from ocr.utils import load_image_with_crop, resize_with_aspect_ratio
+from ocr.data.augment import FakeAugmentator as _FakeAugmentator
+from ocr.data.augment import KillerAugmentator as _KillerAugmentator
 
 
 class BaseDataProcessCallable(ABC):

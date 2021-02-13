@@ -4,8 +4,8 @@ from typing import Tuple, List
 import numpy as np
 from torch.utils.data import Dataset
 
-import transformer_ocr.config as config
-from transformer_ocr.data.data_preparation import Pipeline
+import ocr.config as config
+from ocr.data.data_preparation import Pipeline
 
 
 class BaseDataset(Dataset, ABC):
