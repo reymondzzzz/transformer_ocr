@@ -9,6 +9,7 @@ from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QApplication
 import numpy as np
 from dataclasses import dataclass
+from ocr.datasets.struct import AnnotationItem
 
 _app = QApplication(sys.argv)  # fake app for QFontDatabase
 
@@ -153,13 +154,12 @@ class FakeGenerator:
         text = ''.join([x.sym for _, x in sorted(symbols.items(), key=lambda x: x[0])]).lower()
         lines = target_template['lines_count']
         bbox = [[0., 0.], [1., 0.], [1., 1.], [0., 1.]]
-        return {
-            'image': image,
-            'text': text,
-            'bbox': bbox,
-            'lines': lines
-        }
-
+        return AnnotationItem(
+            image=image,
+            text=text,
+            bbox=bbox,
+            lines=lines
+        )
 
 if __name__ == '__main__':
     import cv2

@@ -47,6 +47,39 @@ class Tokenizer(BasicTransform):
         }
 
 
+class NullifyText(BasicTransform):
+    def __init__(self):
+        super().__init__(always_apply=True, p=1)
+
+    def _nullify_text(self, text, **params):
+        return ''
+
+    def apply_with_params(self, params, force_apply=False, **kwargs):
+        if params is None:
+            return kwargs
+        params = self.update_params(params, **kwargs)
+        res = {}
+
+        for key, arg in kwargs.items():
+            if key != 'text':
+                res[key] = arg
+                continue
+
+            if arg is not None:
+                target_function = self._get_target_function(key)
+                target_dependencies = {k: kwargs[k] for k in self.target_dependence.get(key, [])}
+                res[key] = target_function(arg, **dict(params, **target_dependencies))
+            else:
+                res[key] = arg
+        return res
+
+    @property
+    def targets(self):
+        return {
+            'text': self._nullify_text
+        }
+
+
 class SeriesTransformation(ImageOnlyTransform):
     def __init__(self, series_size=0,
                  pitch_angle=0.05, roll_angle=0.05, yaw_angle=5,

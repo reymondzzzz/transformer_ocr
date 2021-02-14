@@ -9,7 +9,7 @@ num_workers = 12 // len(gpus)
 vocab = '0123456789abcdefghijklmnopqrstuvwxyzäüö'
 letters = ['pad', 'sos'] + list(vocab) + ['eos']
 hidden_features = 128
-train_dataset_len = 23183
+train_dataset_len = 30138
 
 trainer_cfg = dict(
     gpus=gpus,
@@ -20,6 +20,7 @@ trainer_cfg = dict(
              monitor='val_accuracy', dirpath='./results/',
              filename='{epoch:02d}_{val_accuracy:.2f}')
     ],
+    resume_from_checkpoint='/home/kstarkov/ml/transformer_ocr_dssl/results/epoch=127_val_accuracy=0.77.ckpt',
     benchmark=True,
     deterministic=True,
     terminate_on_nan=True,
@@ -39,7 +40,7 @@ backbone_cfg = dict(
 
 head_cfg = dict(
     type='ConvHead',
-    output_channels=hidden_features//4
+    output_channels=hidden_features // 4
 )
 
 decoder_cfg = dict(
@@ -59,29 +60,88 @@ metric_cfgs = [
     dict(type='PhonemeErrorRate', name='val_PER', letters=letters),
 ]
 
-# scale_min, scale_max = 0.7, 0.99
-train_transforms_cfg = dict(
+killer_scale_min, killer_scale_max = 20 / img_side_size, 30 / img_side_size
+killer_transforms = dict(
     type='Compose', transforms=[
-        dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size)),
-        dict(type='PadIfNeeded', min_width=img_side_size, min_height=img_side_size, value=(128, 128, 128),
-             border_mode=0),
-        # dict(type='OneOf', transforms=[
-        #     dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=0, p=1.),
-        #     dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=1, p=1.),
-        #     dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=4, p=1.)
-        # ], p=0.7),
-        # dict(type='RandomBrightnessContrast', brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2), p=0.5),
-        # dict(type='RGBShift', r_shift_limit=(10, 20), g_shift_limit=(10, 20), b_shift_limit=(10, 20), p=0.7),
-        # dict(type='OneOf', transforms=[
-        #     dict(type='MotionBlur', p=1.),
-        #     dict(type='Blur', blur_limit=3, p=1.),
-        #     dict(type='MedianBlur', blur_limit=3, p=1.)
-        # ], p=0.2),
-        # dict(type='HueSaturationValue', p=0.3),
-        dict(type='Normalize', mean=(0., 0., 0.), std=(1., 1., 1.)),
-        dict(type='Tokenizer', vocab=letters, seq_size=sequence_size),
-        dict(type='ToTensorV2')
-    ])
+        dict(type='OneOf', transforms=[
+            dict(type='OneOf', transforms=[
+                dict(type='GaussianBlur', sigma_limit=(7, 10), p=1),
+                dict(type='MedianBlur', blur_limit=(17, 21), p=1),
+                dict(type='MotionBlur', blur_limit=(19, 27), p=1),
+            ]),
+            dict(type='OneOf', transforms=[
+                dict(type='Downscale', scale_min=killer_scale_min, scale_max=killer_scale_max, interpolation=0, p=1.),
+                dict(type='Downscale', scale_min=killer_scale_min, scale_max=killer_scale_max, interpolation=1, p=1.),
+                dict(type='Downscale', scale_min=killer_scale_min, scale_max=killer_scale_max, interpolation=4, p=1.)
+            ]),
+            dict(type='Compose', transforms=[
+                dict(type='GaussianBlur', sigma_limit=(7, 11), p=1),
+                dict(type='ImageCompression', quality_lower=95, quality_upper=100, p=1),
+            ])
+        ]),
+        dict(type='NullifyText')
+    ], p=0.1
+)
+
+scale_min, scale_max = 0.7, 0.99
+real_transforms = dict(type='Compose', transforms=[
+    # TODO 3d rotate
+    dict(type='OneOf', transforms=[
+        dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=0, p=1.),
+        dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=1, p=1.),
+        dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=4, p=1.)
+    ], p=0.7),
+    dict(type='RandomBrightnessContrast', brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2),
+         p=0.5),
+    dict(type='RGBShift', r_shift_limit=(10, 20), g_shift_limit=(10, 20), b_shift_limit=(10, 20),
+         p=0.7),
+    dict(type='OneOf', transforms=[
+        dict(type='MotionBlur', p=1.),
+        dict(type='Blur', blur_limit=3, p=1.),
+        dict(type='MedianBlur', blur_limit=3, p=1.)
+    ], p=0.2),
+    dict(type='HueSaturationValue', p=0.3),
+], p=0.9)
+
+train_transforms_cfg = dict(
+    real_dataset=dict(
+        type='Compose', transforms=[
+            dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size)),
+            dict(type='PadIfNeeded', min_width=img_side_size, min_height=img_side_size, value=(128, 128, 128),
+                 border_mode=0),
+            dict(type='OneOf', transforms=[
+                killer_transforms,
+                real_transforms
+            ], p=1),
+            dict(type='Normalize', mean=(0., 0., 0.), std=(1., 1., 1.)),
+            dict(type='Tokenizer', vocab=letters, seq_size=sequence_size),
+            dict(type='ToTensorV2')
+        ]),
+    fake_dataset=dict(
+        type='Compose', transforms=[
+            dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size)),
+            dict(type='PadIfNeeded', min_width=img_side_size, min_height=img_side_size, value=(128, 128, 128),
+                 border_mode=0),
+            dict(type='ToGray', p=0.5),
+            dict(type='IAAAdditiveGaussianNoise', loc=0, scale=(0.0, 128.0), p=0.5),
+            dict(type='IAASharpen', alpha=(0, 1.0), lightness=(0.5, 4.0), p=0.5),
+            dict(type='ChannelShuffle', p=0.5),
+            dict(type='MotionBlur', blur_limit=5, p=0.5),
+            dict(type='Normalize', mean=(0., 0., 0.), std=(1., 1., 1.)),
+            dict(type='Tokenizer', vocab=letters, seq_size=sequence_size),
+            dict(type='ToTensorV2')
+        ]),
+    empty_dataset=dict(
+        type='Compose', transforms=[
+            dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size)),
+            dict(type='PadIfNeeded', min_width=img_side_size, min_height=img_side_size, value=(128, 128, 128),
+                 border_mode=0),
+            real_transforms,
+            dict(type='Normalize', mean=(0., 0., 0.), std=(1., 1., 1.)),
+            dict(type='Tokenizer', vocab=letters, seq_size=sequence_size),
+            dict(type='ToTensorV2')
+        ]),
+)
 
 val_transforms_cfg = dict(
     type='Compose', transforms=[
@@ -92,14 +152,39 @@ val_transforms_cfg = dict(
         dict(type='Normalize', mean=(0., 0., 0.), std=(1., 1., 1.)),
         dict(type='ToTensorV2')
     ])
-train_dataset_cfg = dict(
-    type='RealDataset',
-    dataset_path='/home/kstarkov/ml/datasets/lpr4_images',
-    subset='train',
-    vocab=vocab,
-    debug=False,
-    lines_allowed=[1, 2]
-)
+
+train_dataset_cfg = [
+    dict(
+        type='RealDataset',
+        dataset_path='/home/kstarkov/ml/datasets/lpr4_images',
+        subset='train',
+        vocab=vocab,
+        debug=False,
+        lines_allowed=[1, 2],
+        name='real_dataset'
+    ),
+    dict(
+        type='FakeDataset',
+        capacity=4637,  # len(real_dataset) * 0.2
+        name='fake_dataset',
+        generator_config=dict(
+            lpr_resources='/home/kstarkov/t1s/tech1lpr/lpr_resources',
+            most_popular_templates=dict(
+                ru_type5_subtype1_lines1=0.033,
+                ru_type5_subtype2_lines1=0.033,
+                ru_type5_subtype3_lines1=0.033,
+                ru_type6_subtype1_lines1=0.1,
+                ru_type7_subtype1_lines1=0.1,
+            )
+        )
+    ),
+    dict(
+        type='EmptyDataset',
+        root_path='/home/kstarkov/ml/datasets/lpr4_images',
+        capacity=2318,  # len(real_dataset) * 0.1,
+        name='empty_dataset'
+    )
+]
 
 val_dataset_cfg = dict(
     type='RealDataset',
@@ -125,12 +210,12 @@ val_dataloader_cfg = dict(
 
 optimizer_cfg = dict(
     type='RangerAdaBelief',
-    lr=1e-4# * len(gpus)
+    lr=1e-4  # * len(gpus)
 )
 scheduler_cfg = dict(
     type='CyclicLR',
-    base_lr=1e-4 * len(gpus),
-    max_lr=1e-3 * len(gpus),
+    base_lr=1e-3 * len(gpus),
+    max_lr=1e-2 * len(gpus),
     step_size_up=int(train_dataset_len // batch_size * (epochs * 0.1)),
     mode='triangular2',
     cycle_momentum=False,

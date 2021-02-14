@@ -1,3 +1,6 @@
+from typing import Dict, Any, Optional, List
+from copy import deepcopy
+import pytorch_lightning as pl
 from copy import deepcopy
 from typing import Dict, Any, Optional, List
 
@@ -7,9 +10,9 @@ __all__ = ['TransformerOCRPLModule']
 
 import torch
 
+from ocr.datasets.mix_dataset import MixDataset
 from ocr.utils.builders import build_optimizer_from_cfg, build_lr_scheduler_from_cfg, \
-    build_backbone_from_cfg, build_head_from_cfg, build_decoder_from_cfg, build_decoder_head_from_cfg, \
-    build_loss_from_cfg, build_transform_from_cfg, build_dataset_from_cfg, build_metric_from_cfg
+    build_backbone_from_cfg, build_head_from_cfg, build_decoder_from_cfg, build_loss_from_cfg, build_transform_from_cfg, build_dataset_from_cfg, build_metric_from_cfg
 from ocr.utils.tokenizer import tokenize_vocab
 
 CfgT = Dict[str, Any]
@@ -134,8 +137,16 @@ class TransformerOCRPLModule(pl.LightningModule):
 
     @staticmethod
     def __create_dataloader(transforms_cfg, dataset_cfg, dataloader_cfg):
-        transforms = build_transform_from_cfg(transforms_cfg.copy())
-        dataset = build_dataset_from_cfg(transforms, dataset_cfg.copy())
+        if isinstance(dataset_cfg, list):
+            datasets = []
+            for cfg in dataset_cfg:
+                dataset_name = cfg['name']
+                transforms = build_transform_from_cfg(deepcopy(transforms_cfg[dataset_name]))
+                datasets.append(build_dataset_from_cfg(transforms, deepcopy(cfg)))
+            dataset = MixDataset(datasets)
+        else:
+            transforms = build_transform_from_cfg(transforms_cfg.copy())
+            dataset = build_dataset_from_cfg(transforms, dataset_cfg.copy())
         return torch.utils.data.DataLoader(dataset, collate_fn=TextCollate(), **dataloader_cfg)
 
     def train_dataloader(self):

@@ -2,7 +2,7 @@ from torch.utils.data import Dataset
 
 
 class MixDataset(Dataset):
-    def __init__(self, *datasets):
+    def __init__(self, datasets):
         self._datasets = datasets
 
     def __len__(self):
