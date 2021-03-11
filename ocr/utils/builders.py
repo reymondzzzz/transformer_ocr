@@ -69,8 +69,12 @@ def build_backbone_from_cfg(config) -> Tuple[torch.nn.Module, int]:
         output_channels = backbone.output_channels
     elif backbone_type_name in pretrainedmodels.__dict__:
         backbone = pretrainedmodels.__dict__[backbone_type_name](**args)
-        backbone.forward = backbone.features
-        output_channels = backbone.last_linear.in_features
+        if 'squeezenet' in backbone_type_name:
+            backbone = backbone.features
+            output_channels = 512
+        else:
+            backbone.forward = backbone.features
+            output_channels = backbone.last_linear.in_features
     elif backbone_type_name in timm.list_models():
         backbone = timm.create_model(backbone_type_name, **args)
         backbone.forward = backbone.forward_features
@@ -112,7 +116,13 @@ def build_dataset_from_cfg(transforms, config):
 
 
 def build_loss_from_cfg(config):
-    return _base_transform_from_cfg(config, [Losses, TorchNNModules, PytorchExtraLosses])
+    if config['type'] == 'MixedLoss':
+        losses = []
+        for loss_cfg in config['losses']:
+            losses.append(_base_transform_from_cfg(loss_cfg, [Losses, TorchNNModules, PytorchExtraLosses]))
+        return Losses.MixedLoss(losses=losses)
+    else:
+        return _base_transform_from_cfg(config, [Losses, TorchNNModules, PytorchExtraLosses])
 
 
 def build_decoder_from_cfg(config):

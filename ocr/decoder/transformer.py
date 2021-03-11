@@ -1,17 +1,17 @@
 import math
-from typing import List
-
 import torch
 from torch import nn
+from typing import List
 
 from ocr.utils.tokenizer import tokenize_vocab
+
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
         self.scale = nn.Parameter(torch.ones(1))
-
+        self.d_model = d_model
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(
@@ -62,43 +62,25 @@ class TransformerDecoder(nn.Module):
 
     def forward(self, src, seq_size):
         batch_size = src.shape[0]
-        #bs ch h w
-        x = src.permute(0, 3, 1, 2).flatten(2).permute(1, 0, 2)
+
+        x = src.flatten(2).permute(2, 0, 1)
         memory = self.transformer.encoder(self.pos_encoder(x))
 
-        out_tokens = torch.LongTensor([[self.letter_to_token['sos'], ]] * batch_size).permute(1, 0)
+        trg_tensor = torch.ones((1, batch_size), dtype=torch.long, device=src.device)
         for i in range(seq_size - 1):
-            trg_tensor = torch.LongTensor(out_tokens).to(src.device)
-
             output = self.decoder(trg_tensor)
             output = self.pos_decoder(output)
             output = self.transformer.decoder(output, memory)
             output = self.fc(output)
-            out_token = output[-1, None].argmax(2).detach().cpu()
-            out_tokens = torch.cat((out_tokens, out_token), dim=0)
-            # out_indexes.append(out_token)
-        return out_tokens.to(src.device)
-
-    # def forward(self, src, l):
-    #     x = src.permute(0, 3, 1, 2).flatten(2).permute(1, 0, 2)
-    #
-    #     memory = self.transformer.encoder(self.pos_encoder(x))
-    #
-    #     out_indexes = [self.letter_to_token['sos'], ]
-    #
-    #     for i in range(l - 1):
-    #         trg_tensor = torch.LongTensor(out_indexes).unsqueeze(1).to(src.device)
-    #
-    #         output = self.fc(self.transformer.decoder(self.pos_decoder(self.decoder(trg_tensor)), memory))
-    #         out_token = output.argmax(2)[-1].item()
-    #         out_indexes.append(out_token)
-    #     return torch.tensor(out_indexes).unsqueeze(1).to(src.device)
+            out_token = output[i].argmax(1).unsqueeze(0)
+            trg_tensor = torch.cat((trg_tensor, out_token), dim=0)
+        return trg_tensor.permute(1, 0, 2)
 
     def train_forward(self, src, trg):
         if self.trg_mask is None or self.trg_mask.size(0) != len(trg):
             self.trg_mask = self.generate_square_subsequent_mask(len(trg)).to(trg.device)
 
-        x = src.permute(0, 3, 1, 2).flatten(2).permute(1, 0, 2)
+        x = src.flatten(2).permute(2, 0, 1)
         src_pad_mask = self.make_len_mask(x[:, :, 0])
         src = self.pos_encoder(x)
 
@@ -111,4 +93,4 @@ class TransformerDecoder(nn.Module):
                                   src_key_padding_mask=src_pad_mask, tgt_key_padding_mask=trg_pad_mask,
                                   memory_key_padding_mask=src_pad_mask)
         output = self.fc(output)
-        return output
+        return output.permute(1, 0, 2)

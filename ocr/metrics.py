@@ -17,10 +17,10 @@ def phoneme_error_rate(p_seq1, p_seq2):
 
 class PhonemeErrorRate(Metric):
     def __init__(self, letters):
-        super().__init__()
+        super().__init__(compute_on_step=True)
         _, self.token_to_letter = tokenize_vocab(letters)
-        self.add_state('dists', default=torch.tensor(0.))
-        self.add_state('total_seq', default=torch.tensor(0))
+        self.add_state('dists', default=torch.tensor(0.), dist_reduce_fx="sum")
+        self.add_state('total_seq', default=torch.tensor(0), dist_reduce_fx="sum")
 
     def _to_text(self, seq):
         symbol_list = [self.token_to_letter[token] for token in seq]

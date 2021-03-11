@@ -1,17 +1,18 @@
+import json
 import sys
 from functools import lru_cache
 from pathlib import Path
-import json
 
+import numpy as np
 from PyQt5.QtCore import Qt, QRect
 from PyQt5.QtGui import QFont, QImage, QFontDatabase, QPainter, QPen, QColor, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QApplication
-import numpy as np
 from dataclasses import dataclass
+
 from ocr.datasets.struct import AnnotationItem
 
-_app = QApplication(sys.argv)  # fake app for QFontDatabase
+_app = QApplication(sys.argv + ['-platform', 'offscreen'])  # fake app for QFontDatabase
 
 
 @dataclass
@@ -35,7 +36,7 @@ def get_font(path: Path):
 def qimage_to_nparr(image):
     '''  Converts a QImage into an opencv MAT format  '''
 
-    image = image.convertToFormat(QImage.Format.Format_RGB888)
+    image = image.convertToFormat(QImage.Format.Format_BGR888)
 
     width = image.width()
     height = image.height()
@@ -137,7 +138,16 @@ class FakeGenerator:
             if len(values) <= 1:
                 values = values[0]
                 if len(values) != len(symbols_ids):
-                    values = np.random.choice(list(values), len(symbols_ids))
+                    most_pop_sym_in_values = [x for x, _ in self._settings['most_popular_letters'].items() if
+                                              x in values]
+                    other_probs = (1. - sum(
+                        [self._settings['most_popular_letters'][x] for x in most_pop_sym_in_values])) / (
+                                          len(values) - len(most_pop_sym_in_values))
+                    probs = [other_probs] * len(values)
+                    for letter in most_pop_sym_in_values:
+                        index = list(values).index(letter)
+                        probs[index] = self._settings['most_popular_letters'][letter]
+                    values = np.random.choice(list(values), len(symbols_ids), p=probs)
             else:
                 assert all([len(x) == len(symbols_ids) for x in values])
                 values = np.random.choice(values, 1)[0]
@@ -156,10 +166,11 @@ class FakeGenerator:
         bbox = [[0., 0.], [1., 0.], [1., 1.], [0., 1.]]
         return AnnotationItem(
             image=image,
-            text=text,
             bbox=bbox,
+            text=text,
             lines=lines
         )
+
 
 if __name__ == '__main__':
     import cv2
@@ -167,17 +178,23 @@ if __name__ == '__main__':
     generator = FakeGenerator({
         'lpr_resources': '/home/kstarkov/t1s/tech1lpr/lpr_resources',
         'most_popular_templates': {
-            'ru_type5_subtype1_lines1': 0.033,
-            'ru_type5_subtype2_lines1': 0.033,
-            'ru_type5_subtype3_lines1': 0.033,
+            'ru_type5_subtype1_lines1': 0.166,
+            'ru_type5_subtype2_lines1': 0.166,
+            'ru_type5_subtype3_lines1': 0.166,
             'ru_type6_subtype1_lines1': 0.1,
-            'ru_type7_subtype1_lines1': 0.8,
+            'ru_type7_subtype1_lines1': 0.1,
+        },
+        'most_popular_letters': {
+            'x': .15,
+            'y': .15,
+            '7': .15,
+            'z': .15,
         }
     })
     while True:
-        sample = generator.generate_one_plate()
-        print(sample['text'], sample['lines'])
-        image = cv2.cvtColor(sample['image'], cv2.COLOR_RGB2BGR)
+        image, text, bbox, lines = generator.generate_one_plate()
+        print(text, lines)
+        # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         cv2.imshow('plate', image)
         k = cv2.waitKey(0) & 0xFF
         if k == 27:

@@ -28,27 +28,9 @@ def debug_sample(sample):
         img = (img.cpu().numpy() * 255.).astype(np.uint8)
         return np.transpose(img, (1, 2, 0))[..., ::-1].copy()
 
-    def _draw_kps(img, kps):
-        for x, y in kps[:, :2]:
-            x, y = int(x * img.shape[1]), int(y * img.shape[0])
-            cv2.circle(img, (x, y), 1, (255, 255, 255), -1)
-
     for field, data in sample.items():
         if field.startswith('image'):
             img = _unprocess_img(data)
-            cv2.namedWindow(field, cv2.WINDOW_KEEPRATIO)
-            cv2.imshow(field, img)
-            cv2.waitKey(1)
-        elif field == '3dfa_keypoints':
-            img = _unprocess_img(sample['image'])
-            _draw_kps(img, data)
-            cv2.namedWindow(field, cv2.WINDOW_KEEPRATIO)
-            cv2.imshow(field, img)
-            cv2.waitKey(1)
-        elif field.startswith('kps_series_'):
-            series_idx = field.split('_')[-1]
-            img = _unprocess_img(sample[f'image_series_{series_idx}'])
-            _draw_kps(img, data)
             cv2.namedWindow(field, cv2.WINDOW_KEEPRATIO)
             cv2.imshow(field, img)
             cv2.waitKey(1)

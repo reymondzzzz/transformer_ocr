@@ -22,7 +22,8 @@ if __name__ == '__main__':
         assert False, f"Config not found: {args.config}"
 
     config = load_module(args.config)
-    seed_everything_deterministic(config.seed)
+    if config.seed is not None:
+        seed_everything_deterministic(config.seed)
     if hasattr(config, 'mp_start_method'):
         torch.multiprocessing.set_start_method(config.mp_start_method)
 
@@ -42,20 +43,11 @@ if __name__ == '__main__':
             for config in config.trainer_cfg['callbacks']
         ]
 
-    # ddp = DDPPlugin(find_unused_parameters=False, broadcast_buffers=False)
-
     trainer = Trainer(
         logger=[logger],
-        # automatic_optimization=False,
-        # # enable_pl_optimizer=True,
-        # plugins=[ddp],
         **config.trainer_cfg
     )
 
-    # lr_finder = trainer.tuner.lr_find(lightning_module, num_training=100)
-    # print(lr_finder.results)
-    # fig = lr_finder.plot(suggest=True)
-    # fig.show()
     trainer.fit(lightning_module)
     if rank_zero_only.rank == 0:
         maybe_cp_callback = get_checkpoint_callback(config.trainer_cfg['callbacks'])

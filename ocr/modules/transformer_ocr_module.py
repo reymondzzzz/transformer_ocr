@@ -21,6 +21,7 @@ class TextCollate():
     def __call__(self, batch):
         x_padded = []
         max_y_len = max([i[1].size(0) for i in batch])
+        lengths = torch.LongTensor([i[1].size(0) for i in batch])
         y_padded = torch.LongTensor(max_y_len, len(batch))
         y_padded.zero_()
 
@@ -30,7 +31,7 @@ class TextCollate():
             y_padded[:y.size(0), i] = y
 
         x_padded = torch.cat(x_padded)
-        return x_padded, y_padded
+        return x_padded, y_padded, lengths
 
 class TransformerOCRPLModule(pl.LightningModule):
     def __init__(self,
@@ -92,12 +93,15 @@ class TransformerOCRPLModule(pl.LightningModule):
             metric_module = build_metric_from_cfg(metric_cfg.copy())
             self.metrics.append(metric_module)
 
-    def forward(self, src, sequence_size):
+    def forward_val(self, src, sequence_size):
         x = self.backbone(src)
         if self.head is not None:
             x = self.head(x)
         x = self.decoder(x, sequence_size)
         return x
+
+    def forward(self, src):
+        return self.forward_val(src, self.sequence_size)
 
     def train_forward(self, src, tgt):
         x = self.backbone(src)
@@ -107,20 +111,20 @@ class TransformerOCRPLModule(pl.LightningModule):
         return x
 
     def training_step(self, batch, batch_idx):
-        images, tokens = batch
+        images, tokens, lengths = batch
         output = self.train_forward(images, tokens[:-1, :])
 
         losses = []
         for loss_name, loss_module in self.losses:
-            losses.append(loss_module(output.view(-1, output.shape[-1]), torch.reshape(tokens[1:, :], (-1,))))
+            losses.append(loss_module(output, tokens.permute(1, 0)[:, 1:], lengths - 1))
             self.log(loss_name, losses[-1], prog_bar=True, on_epoch=False, on_step=True, logger=True)
 
-        self.log("lr", self.scheduler.get_last_lr()[0], prog_bar=True, on_step=True, logger=False)
+        # self.log("lr", self.scheduler.get_last_lr()[0], prog_bar=True, on_step=True, logger=False)
         return torch.sum(torch.stack(losses))
 
     def validation_step(self, batch, batch_idx, dataset_idx=0):
-        images, tokens = batch
-        output = self(images, len(tokens))
+        images, tokens, _ = batch
+        output = self.forward_val(images, len(tokens))
 
         for metric in self.metrics:
             metric(output, tokens)

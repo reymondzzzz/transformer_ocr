@@ -1,8 +1,7 @@
-import math
-import random
-
 import cv2
+import math
 import numpy as np
+import random
 import torch
 from albumentations import ImageOnlyTransform, BasicTransform
 
@@ -94,15 +93,21 @@ class SeriesTransformation(ImageOnlyTransform):
         self.yaw_angle = yaw_angle
         self.f = 1
         self.dx, self.dy = dx, dy  # 5, 5
-        self.scale = scale
-        self.background_color = (0, 0, 0)
+        self.scale = self._to_tuple(scale)
+        self.background_color = (128, 128, 128)
+
+    def _to_tuple(self, value):
+        if isinstance(value, tuple) or isinstance(value, list):
+            return tuple(value)
+        else:
+            return (-value, value)
 
     def _transform(self, img):
         pitch_angle = math.radians(random.choice([-self.pitch_angle, self.pitch_angle]))
         roll_angle = math.radians(random.choice([-self.roll_angle, self.roll_angle]))
         yaw_angle = math.radians(random.choice([-self.yaw_angle, self.yaw_angle]))
         dx, dy = random.choice([-self.dx, self.dx]), random.choice([-self.dy, self.dy])
-        scale = 1 + random.choice([-self.scale, self.scale])
+        scale = 1 + random.choice(list(self.scale))
 
         h, w = img.shape[:2]
 
