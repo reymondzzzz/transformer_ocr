@@ -26,12 +26,13 @@ class LabelSmoothedCE(torch.nn.Module):
         :return: mean label-smoothed cross-entropy loss, a scalar
         """
         # Remove pad-positions and flatten
+        lengths = lengths.cpu()
         inputs, _, _, _ = pack_padded_sequence(input=inputs,
-                                               lengths=lengths.cpu(),
+                                               lengths=lengths,
                                                batch_first=True,
                                                enforce_sorted=False)  # (sum(lengths), vocab_size)
         targets, _, _, _ = pack_padded_sequence(input=targets,
-                                                lengths=lengths.cpu(),
+                                                lengths=lengths,
                                                 batch_first=True,
                                                 enforce_sorted=False)  # (sum(lengths))
 

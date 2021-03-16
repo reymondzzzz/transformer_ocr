@@ -1,22 +1,21 @@
-import sys
 from typing import Tuple
 
 import albumentations as Albumentations
 import albumentations.pytorch as AlbumentationsPytorch
-import mask_the_face as MaskTransforms
 import pretrainedmodels
 import pytorch_lightning.callbacks as LightningCallbacks
-import pytorch_loss as PytorchExtraLosses
+import pytorch_lightning.metrics as PLMetrics
+# import pytorch_loss as PytorchExtraLosses
 import timm
 import torch
 import torch.nn as TorchNNModules
 import torch.optim as OptimizerLib
 import torch.optim.lr_scheduler as LRSchedulerLib
-import pytorch_lightning.metrics as PLMetrics
 
-import ocr.decoder as Decoders
-import ocr.decoder_head as DecoderHeades
 import ocr.datasets as Datasets
+import ocr.decoder as Decoders
+import ocr.encoder as Encoders
+import ocr.blocks as Blocks
 import ocr.loss as Losses
 import ocr.metrics as CustomMetrics
 import ocr.modelling.backbones as Backbones
@@ -92,14 +91,7 @@ def build_head_from_cfg(input_channels: int, config):
 
 def build_transform_from_cfg(config):
     def _builder(cfg):
-        modules = [Albumentations, AlbumentationsPytorch, Transforms, MaskTransforms]
-        try:
-            sys.path.append('./face_reid/external/dddfa_v2_dssl')
-            import face_reid.external.dddfa_v2_dssl.tddfa_v2.transform as TddfaTranform
-            modules.append(TddfaTranform)
-        except:
-            pass
-
+        modules = [Albumentations, AlbumentationsPytorch, Transforms]
         if 'transforms' in cfg:
             cfg['transforms'] = [
                 _builder(transform_cfg) for transform_cfg in cfg['transforms']
@@ -116,21 +108,20 @@ def build_dataset_from_cfg(transforms, config):
 
 
 def build_loss_from_cfg(config):
-    if config['type'] == 'MixedLoss':
-        losses = []
-        for loss_cfg in config['losses']:
-            losses.append(_base_transform_from_cfg(loss_cfg, [Losses, TorchNNModules, PytorchExtraLosses]))
-        return Losses.MixedLoss(losses=losses)
-    else:
-        return _base_transform_from_cfg(config, [Losses, TorchNNModules, PytorchExtraLosses])
+    type = config['type']
+    if hasattr(TorchNNModules, type):
+        loss_module = _base_transform_from_cfg(config, [TorchNNModules])
+        return Losses.pytorch_inject_loss(loss_module)
+    return _base_transform_from_cfg(config, [Losses])#, PytorchExtraLosses])
+
+
+def build_encoder_from_cfg(input_channels: int, config):
+    config['input_channels'] = input_channels
+    return _base_transform_from_cfg(config, [Encoders])
 
 
 def build_decoder_from_cfg(config):
     return _base_transform_from_cfg(config, [Decoders])
-
-
-def build_decoder_head_from_cfg(config):
-    return _base_transform_from_cfg(config, [DecoderHeades])
 
 
 def build_metric_from_cfg(config):

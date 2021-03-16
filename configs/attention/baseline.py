@@ -1,6 +1,6 @@
 seed = 42
-gpus = [0]
-batch_size = 16
+gpus = [0, 1]
+batch_size = 128
 epochs = 1000
 img_side_size = 256
 sequence_size = 14
@@ -9,6 +9,7 @@ num_workers = 12 // len(gpus)
 vocab = '0123456789abcdefghijklmnopqrstuvwxyzäüö'
 letters = ['pad', 'sos'] + list(vocab) + ['eos']
 hidden_features = 512
+emb_size = 256
 train_dataset_len = 30138
 debug = False
 
@@ -18,7 +19,7 @@ trainer_cfg = dict(
     callbacks=[
         dict(type='LearningRateMonitor', logging_interval='step'),
         dict(type='ModelCheckpoint', save_top_k=5, verbose=True, mode='max',
-             monitor='val_accuracy', dirpath='./results/transformer/',
+             monitor='val_accuracy', dirpath='./results/attention/',
              filename='{epoch:02d}_{val_accuracy:.4f}')
     ],
     resume_from_checkpoint=None,
@@ -26,7 +27,7 @@ trainer_cfg = dict(
     deterministic=True,
     terminate_on_nan=True,
     distributed_backend='ddp',
-    precision=32,
+    precision=16,
     sync_batchnorm=True,
 )
 
@@ -40,20 +41,26 @@ backbone_cfg = dict(
     # deploy=True
 )
 
-head_cfg = dict(
-    type='ConvHead',
-    output_channels=hidden_features
-)
-
 decoder_cfg = dict(
-    type='TransformerDecoder',
+    type='BahdanauAttnDecoderRNN',
     hidden_features=hidden_features,
+    embed_size=emb_size,
     vocab=letters
 )
 
+encoder_cfg = dict(
+    type='AttentionEncoder',
+    hidden_features=hidden_features,
+    feature_x=8,
+    feature_y=8,
+    # vocab=letters
+)
+
 loss_cfgs = [
-    dict(type='LabelSmoothedCE',
-         name='cross_entropy')
+    dict(type='CrossEntropyLoss',
+         name='cross_entropy',
+         ignore_index=0  # pad class
+    )
 ]
 
 
@@ -259,8 +266,9 @@ module_cfg = dict(
     vocab=letters,
     sequence_size=sequence_size,
     backbone_cfg=backbone_cfg,
-    head_cfg=head_cfg,
+    # head_cfg=head_cfg,
     decoder_cfg=decoder_cfg,
+    encoder_cfg=encoder_cfg,
     # loss_head_cfg=loss_head_cfg,
     loss_cfgs=loss_cfgs,
     metric_cfgs=metric_cfgs,

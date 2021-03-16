@@ -5,7 +5,7 @@ import torch
 from detector_utils.utils.other import load_module
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.plugins.ddp_plugin import DDPPlugin
+from pytorch_lightning.plugins.training_type import DDPPlugin
 from pytorch_lightning.utilities import rank_zero_only
 
 import wandb

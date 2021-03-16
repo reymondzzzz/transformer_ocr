@@ -12,7 +12,8 @@ import torch
 
 from ocr.datasets.mix_dataset import MixDataset
 from ocr.utils.builders import build_optimizer_from_cfg, build_lr_scheduler_from_cfg, \
-    build_backbone_from_cfg, build_head_from_cfg, build_decoder_from_cfg, build_loss_from_cfg, build_transform_from_cfg, build_dataset_from_cfg, build_metric_from_cfg
+    build_backbone_from_cfg, build_head_from_cfg, build_decoder_from_cfg, build_loss_from_cfg, build_transform_from_cfg, \
+    build_dataset_from_cfg, build_metric_from_cfg, build_encoder_from_cfg
 from ocr.utils.tokenizer import tokenize_vocab
 
 CfgT = Dict[str, Any]
@@ -38,7 +39,8 @@ class TransformerOCRPLModule(pl.LightningModule):
                  vocab: List[str],
                  sequence_size: int,
                  backbone_cfg: CfgT = dict(),
-                 decoder_cfg: CfgT = dict(),
+                 encoder_cfg: Optional[CfgT] = None,
+                 decoder_cfg: Optional[CfgT] = None,
                  head_cfg: Optional[CfgT] = None,
                  loss_cfgs: Optional[CfgT] = None,
                  metric_cfgs: List[CfgT] = list(),
@@ -55,6 +57,7 @@ class TransformerOCRPLModule(pl.LightningModule):
         super(TransformerOCRPLModule, self).__init__()
         self.backbone_cfg = backbone_cfg
         self.head_cfg = head_cfg
+        self.encoder_cfg = encoder_cfg
         self.decoder_cfg = decoder_cfg
         self.loss_cfgs = loss_cfgs
         self.metric_cfgs = metric_cfgs
@@ -77,7 +80,10 @@ class TransformerOCRPLModule(pl.LightningModule):
     def _build_models(self):
         self.backbone, in_ch = build_backbone_from_cfg(self.backbone_cfg.copy())
         self.head = None if self.head_cfg is None else build_head_from_cfg(in_ch, self.head_cfg)
-        self.decoder = build_decoder_from_cfg(self.decoder_cfg.copy())
+        if self.head is not None:
+            in_ch = self.head.output_channels
+        self.encoder = None if self.encoder_cfg is None else build_encoder_from_cfg(in_ch, self.encoder_cfg.copy())
+        self.decoder = None if self.decoder_cfg is None else build_decoder_from_cfg(self.decoder_cfg.copy())
 
         self.losses, self.metrics = [], torch.nn.ModuleList()
         for loss_cfg in self.loss_cfgs:
@@ -97,6 +103,8 @@ class TransformerOCRPLModule(pl.LightningModule):
         x = self.backbone(src)
         if self.head is not None:
             x = self.head(x)
+        if self.encoder is not None:
+            x = self.encoder(x)
         x = self.decoder(x, sequence_size)
         return x
 
@@ -107,6 +115,8 @@ class TransformerOCRPLModule(pl.LightningModule):
         x = self.backbone(src)
         if self.head is not None:
             x = self.head(x)
+        if self.encoder is not None:
+            x = self.encoder(x)
         x = self.decoder.train_forward(x, tgt)
         return x
 
