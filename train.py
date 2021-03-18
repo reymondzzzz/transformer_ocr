@@ -43,8 +43,11 @@ if __name__ == '__main__':
             for config in config.trainer_cfg['callbacks']
         ]
 
+    ddp_plugin = DDPPlugin(find_unused_parameters=True)
+
     trainer = Trainer(
         logger=[logger],
+        plugins=[ddp_plugin],
         **config.trainer_cfg
     )
 

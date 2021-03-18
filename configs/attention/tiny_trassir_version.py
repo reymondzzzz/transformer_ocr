@@ -1,15 +1,14 @@
 seed = 42
-gpus = [0, 1]
+gpus = [0]
 batch_size = 128
 epochs = 1000
-img_side_size = 256
+img_side_size = 96
 sequence_size = 14
-num_workers = 12 // len(gpus)
+num_workers = 0 // len(gpus)
 
 vocab = '0123456789abcdefghijklmnopqrstuvwxyzäüö'
 letters = ['pad', 'sos'] + list(vocab) + ['eos']
-hidden_features = 512
-emb_size = 256
+hidden_features = 128
 train_dataset_len = 30138
 debug = False
 
@@ -27,7 +26,7 @@ trainer_cfg = dict(
     deterministic=True,
     terminate_on_nan=True,
     distributed_backend='ddp',
-    precision=16,
+    precision=32,
     sync_batchnorm=True,
 )
 
@@ -37,32 +36,34 @@ wandb_cfg = dict(
 )
 
 backbone_cfg = dict(
-    type='RepVGG_B1',
+    type='ConvNet',
     # deploy=True
+)
+
+head_cfg = dict(
+    type='ResizeHead',
+    output_size=(img_side_size // 4, img_side_size // 4)
 )
 
 decoder_cfg = dict(
     type='BahdanauAttnDecoderRNN',
     hidden_features=hidden_features,
-    embed_size=emb_size,
     vocab=letters
 )
 
 encoder_cfg = dict(
     type='AttentionEncoder',
     hidden_features=hidden_features,
-    feature_x=8,
-    feature_y=8,
-    # vocab=letters
+    feature_x=img_side_size // 4,
+    feature_y=img_side_size // 4,
 )
 
 loss_cfgs = [
     dict(type='CrossEntropyLoss',
          name='cross_entropy',
          ignore_index=0  # pad class
-    )
+         )
 ]
-
 
 metric_cfgs = [
     dict(type='Accuracy', name='val_accuracy'),
@@ -245,19 +246,29 @@ val_dataloader_cfg = dict(
 )
 
 optimizer_cfg = dict(
-    type='RangerAdaBelief',
-    lr=1e-3 * len(gpus)
+    type='Adam',
+    lr=1e-2 * len(gpus)
 )
+
+
+def lr_func(epoch: int):
+    if epoch < 3:
+        return 0.010 * len(gpus)
+    elif epoch < 30:
+        return 0.0010 * len(gpus)
+    elif epoch < 80:
+        return 0.0005 * len(gpus)
+    else:
+        return 0.0001 * len(gpus)
+
+
 scheduler_cfg = dict(
-    type='CyclicLR',
-    base_lr=1e-3 * len(gpus),
-    max_lr=1e-2 * len(gpus),
-    step_size_up=int(train_dataset_len // batch_size * (epochs * 0.1)),
-    mode='triangular2',
-    cycle_momentum=False,
+    type='LambdaLR',
+    lr_lambda=lr_func,
+
 )
 scheduler_update_params = dict(
-    interval='step',
+    interval='epoch',
     frequency=1
 )
 
