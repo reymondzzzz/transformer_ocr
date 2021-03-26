@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 import matplotlib.pyplot as plt
@@ -47,3 +48,12 @@ def get_checkpoint_callback(callbacks) -> Optional[ModelCheckpoint]:
         return next((c for c in callbacks if type(c) == ModelCheckpoint))
     except StopIteration:
         return None
+
+
+def load_module(module_filename: Path):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(__name__, str(module_filename))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
