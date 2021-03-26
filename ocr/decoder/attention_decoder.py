@@ -1,3 +1,5 @@
+import random
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -18,8 +20,7 @@ class BahdanauAttnDecoderRNN(nn.Module):
         self.dropout = nn.Dropout(self.dropout_p)
         self.gru = nn.GRU(self.hidden_size, self.hidden_size)
         self.out = nn.Linear(self.hidden_size, self.output_size)
-
-        self.v_at = nn.Linear(hidden_features, 1)
+        self.vat = nn.Linear(hidden_features, 1)
 
     def forward_step(self, input, hidden, encoder_outputs):
         embedded = self.embedding(input)
@@ -27,8 +28,8 @@ class BahdanauAttnDecoderRNN(nn.Module):
 
         batch_size = encoder_outputs.shape[1]
         alpha = hidden + encoder_outputs
-        alpha = alpha.view(-1, alpha.shape[-1])
-        attn_weights = self.v_at(torch.tanh(alpha))
+        alpha = alpha.contiguous().view(-1, alpha.shape[-1])
+        attn_weights = self.vat(torch.tanh(alpha))
         attn_weights = attn_weights.view(-1, 1, batch_size).permute((2, 1, 0))
         attn_weights = F.softmax(attn_weights, dim=2)
 
@@ -40,33 +41,37 @@ class BahdanauAttnDecoderRNN(nn.Module):
         output = F.relu(output)
         output, hidden = self.gru(output, hidden)
 
-        output = self.out(output[0])
+        output = F.log_softmax(self.out(output[0]), dim=1)
         return output, hidden, attn_weights
 
-    def init_hidden(self, encoder_outputs):
-        return torch.zeros(1, encoder_outputs.size(1), self.hidden_size, device=encoder_outputs.device)
+    def _decode_logits(self, logits):
+        symbols = logits.topk(1)[1]
+        return symbols
 
     def train_forward(self, encoder_outputs, target_seq):
-        hidden = self.init_hidden(encoder_outputs)
-
-        target_seq = target_seq.permute(1, 0)
+        batch_size = encoder_outputs.size(1)
+        hidden = self.initHidden(batch_size).to(encoder_outputs.device)
 
         pre_output_vectors = []
-        for i in range(target_seq.size(1)):
-            current_symbols = target_seq[:, i]
-            output, hidden, attn_weights = self.forward_step(current_symbols, hidden, encoder_outputs)
-            pre_output_vectors.append(output.unsqueeze(1))
+        teach_forcing = random.random() > 0.5
+        current_symbols = target_seq[0]
+        if teach_forcing:
+            for i in range(1, target_seq.size(0)):
+                output, hidden, attn_weights = self.forward_step(current_symbols, hidden, encoder_outputs)
+                pre_output_vectors.append(output.unsqueeze(1))
+                current_symbols = target_seq[i]
+        else:
+            for i in range(1, target_seq.size(0)):
+                output, hidden, attn_weights = self.forward_step(current_symbols, hidden, encoder_outputs)
+                current_symbols = self._decode_logits(output).squeeze(1).detach()
+                pre_output_vectors.append(output.unsqueeze(1))
 
         pre_output_vectors = torch.cat(pre_output_vectors, dim=1)
         return pre_output_vectors
 
     def forward(self, encoder_outputs, max_seq_size):
         batch_size = encoder_outputs.size(1)
-        hidden = self.init_hidden(encoder_outputs)
-
-        def decode(step_output):
-            symbols = step_output.topk(1)[1]
-            return symbols
+        hidden = self.initHidden(batch_size).to(encoder_outputs.device)
 
         sequences = torch.ones(batch_size, 1, dtype=torch.long, device=encoder_outputs.device) * self.letter_to_token[
             'sos']
@@ -74,8 +79,12 @@ class BahdanauAttnDecoderRNN(nn.Module):
         for i in range(max_seq_size - 1):
             current_symbols = sequences[:, i]
             output, hidden, attn_weights = self.forward_step(current_symbols, hidden, encoder_outputs)
-            output = F.log_softmax(output, dim=1)
-            last_symbols = decode(output)
+            last_symbols = self._decode_logits(output)
             sequences = torch.cat((sequences, last_symbols), dim=1)
 
-        return sequences.permute(1, 0)
+        return sequences
+
+    def initHidden(self, batch_size):
+        result = torch.zeros(1, batch_size, self.hidden_size)
+
+        return result

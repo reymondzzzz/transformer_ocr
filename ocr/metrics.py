@@ -1,10 +1,43 @@
+from typing import Iterable, Optional, Union
+
 import editdistance
 import torch
-from pytorch_lightning.metrics import Metric
+from torchmetrics import Metric
 
 from ocr.utils.tokenizer import tokenize_vocab
 
-__all__ = ['PhonemeErrorRate']
+__all__ = ['AccuracyWithIgnoreClasses', 'PhonemeErrorRate']
+
+
+class AccuracyWithIgnoreClasses(Metric):
+    def __init__(self, ignore_classes: Optional[Union[int, Iterable]] = None, dist_sync_on_step=False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        if isinstance(ignore_classes, Iterable):
+            self.ignore_classes = list(ignore_classes)
+        elif isinstance(ignore_classes, int):
+            self.ignore_classes = [ignore_classes]
+        elif ignore_classes is None:
+            self.ignore_classes = []
+        else:
+            assert False, 'incorrect type'
+
+        self.add_state("correct", default=torch.tensor(0), dist_reduce_fx="sum")
+        self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
+
+    def update(self, preds: torch.Tensor, target: torch.Tensor):
+        mask = torch.ones_like(target).bool()
+        for class_idx in self.ignore_classes:
+            mask = mask & (target != class_idx)
+
+        assert preds.shape == target.shape
+
+        acc_mask = preds == target
+        acc_mask[~mask] = False
+        self.correct += torch.sum(acc_mask)
+        self.total += mask.sum()
+
+    def compute(self):
+        return self.correct.float() / self.total
 
 
 def phoneme_error_rate(p_seq1, p_seq2):
@@ -30,7 +63,15 @@ class PhonemeErrorRate(Metric):
         return ''.join(symbol_list)
 
     def update(self, pred_seq, gt_seq) -> None:
-        pred_seq, gt_seq = pred_seq.permute(1, 0).detach().cpu().numpy(), gt_seq.permute(1, 0).detach().cpu().numpy()
+        if len(pred_seq.shape) == 1:
+            pred_seq = pred_seq.unsqueeze(0).detach().cpu().numpy()
+            gt_seq = gt_seq.unsqueeze(0).detach().cpu().numpy()
+        elif len(pred_seq.shape) == 2:
+            pred_seq = pred_seq.detach().cpu().numpy()
+            gt_seq = gt_seq.detach().cpu().numpy()
+        else:
+            assert False, 'not correct shapes'
+
         self.total_seq += pred_seq.shape[0]
         for seq1, seq2 in zip(pred_seq, gt_seq):
             self.dists += phoneme_error_rate(self._to_text(seq1), self._to_text(seq2))

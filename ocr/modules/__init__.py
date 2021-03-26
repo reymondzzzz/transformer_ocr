@@ -1,2 +1,2 @@
 from .attention_ocr_module import AttentionOCRPLModule
-from .transformer_ocr_module import TransformerOCRPLModule
+from .base_ocr_module import BaseOCRPLModule

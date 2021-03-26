@@ -169,7 +169,7 @@ class RepVGG_A0(RepVGG):
 
     @property
     def output_channels(self):
-        return int(512 * 5)
+        return int(512 * 2.5)
 
 
 class RepVGG_A1(RepVGG):

@@ -3,7 +3,7 @@ from .label_smoothed_ce import LabelSmoothedCE
 
 def pytorch_loss_forward_wrapper(real_forward_func):
     def wrap(preds, targets, lengths):
-        logit_shape = preds.size(2)
+        logit_shape = preds.size(-1)
         preds = preds.reshape(-1, logit_shape)
         targets = targets.reshape(-1)
         return real_forward_func(preds, targets)

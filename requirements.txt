@@ -1,0 +1,15 @@
+ranger_adabelief==0.1.0
+numpy==1.20.1
+pytorch_lightning==1.2.5
+pretrainedmodels==0.7.4
+torchmetrics==0.2.0
+dataclasses==0.6
+editdistance==0.5.3
+torch==1.7.1
+timm==0.4.5
+wandb==0.10.23
+opencv_python_headless==4.5.1.48
+matplotlib==3.3.4
+adabelief_pytorch==0.2.1
+albumentations==0.5.2
+PyQt5==5.15.4

@@ -1,12 +1,9 @@
-from typing import Dict, Any, Optional, List
-from copy import deepcopy
-import pytorch_lightning as pl
 from copy import deepcopy
 from typing import Dict, Any, Optional, List
 
 import pytorch_lightning as pl
 
-__all__ = ['TransformerOCRPLModule']
+__all__ = ['BaseOCRPLModule']
 
 import torch
 
@@ -14,27 +11,12 @@ from ocr.datasets.mix_dataset import MixDataset
 from ocr.utils.builders import build_optimizer_from_cfg, build_lr_scheduler_from_cfg, \
     build_backbone_from_cfg, build_head_from_cfg, build_decoder_from_cfg, build_loss_from_cfg, build_transform_from_cfg, \
     build_dataset_from_cfg, build_metric_from_cfg, build_encoder_from_cfg
-from ocr.utils.tokenizer import tokenize_vocab
+from ocr.utils.tokenizer import tokenize_vocab, TextCollate
 
 CfgT = Dict[str, Any]
 
-class TextCollate():
-    def __call__(self, batch):
-        x_padded = []
-        max_y_len = max([i[1].size(0) for i in batch])
-        lengths = torch.LongTensor([i[1].size(0) for i in batch])
-        y_padded = torch.LongTensor(max_y_len, len(batch))
-        y_padded.zero_()
 
-        for i in range(len(batch)):
-            x_padded.append(batch[i][0].unsqueeze(0))
-            y = batch[i][1]
-            y_padded[:y.size(0), i] = y
-
-        x_padded = torch.cat(x_padded)
-        return x_padded, y_padded, lengths
-
-class TransformerOCRPLModule(pl.LightningModule):
+class BaseOCRPLModule(pl.LightningModule):
     def __init__(self,
                  vocab: List[str],
                  sequence_size: int,
@@ -51,10 +33,10 @@ class TransformerOCRPLModule(pl.LightningModule):
                  train_dataloader_cfg: CfgT = dict(),
                  val_dataloader_cfg: CfgT = dict(),
                  optimizer_cfg: CfgT = dict(),
-                 scheduler_cfg: CfgT = dict(),
-                 scheduler_update_params: CfgT = dict(),
+                 scheduler_cfg: Optional[CfgT] = None,
+                 scheduler_update_params: Optional[CfgT] = None,
                  ):
-        super(TransformerOCRPLModule, self).__init__()
+        super(BaseOCRPLModule, self).__init__()
         self.backbone_cfg = backbone_cfg
         self.head_cfg = head_cfg
         self.encoder_cfg = encoder_cfg
@@ -129,13 +111,13 @@ class TransformerOCRPLModule(pl.LightningModule):
             losses.append(loss_module(output, tokens.permute(1, 0)[:, 1:], lengths - 1))
             self.log(loss_name, losses[-1], prog_bar=True, on_epoch=False, on_step=True, logger=True)
 
-        # self.log("lr", self.scheduler.get_last_lr()[0], prog_bar=True, on_step=True, logger=False)
         return torch.sum(torch.stack(losses))
 
     def validation_step(self, batch, batch_idx, dataset_idx=0):
-        images, tokens, _ = batch
+        images, tokens, lengths = batch
         output = self.forward_val(images, len(tokens))
 
+        tokens = tokens.permute(1, 0)
         for metric in self.metrics:
             metric(output, tokens)
 
@@ -145,12 +127,13 @@ class TransformerOCRPLModule(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = build_optimizer_from_cfg(self.parameters(), self.optimizer_cfg.copy())
-        self.scheduler = build_lr_scheduler_from_cfg(optimizer, self.scheduler_cfg.copy())
-        lr_scheduler_info = {'scheduler': self.scheduler, **self.scheduler_update_params}
-        return [optimizer], [lr_scheduler_info]
+        if self.scheduler_cfg is not None:
+            self.scheduler = build_lr_scheduler_from_cfg(optimizer, self.scheduler_cfg.copy())
+            lr_scheduler_info = {'scheduler': self.scheduler, **self.scheduler_update_params}
+            return [optimizer], [lr_scheduler_info]
+        return [optimizer]
 
-    @staticmethod
-    def __create_dataloader(transforms_cfg, dataset_cfg, dataloader_cfg):
+    def __create_dataloader(self, transforms_cfg, dataset_cfg, dataloader_cfg):
         if isinstance(dataset_cfg, list):
             datasets = []
             for cfg in dataset_cfg:
@@ -161,7 +144,8 @@ class TransformerOCRPLModule(pl.LightningModule):
         else:
             transforms = build_transform_from_cfg(transforms_cfg.copy())
             dataset = build_dataset_from_cfg(transforms, dataset_cfg.copy())
-        return torch.utils.data.DataLoader(dataset, collate_fn=TextCollate(), **dataloader_cfg)
+        return torch.utils.data.DataLoader(dataset, collate_fn=TextCollate(letter_to_token=self.letter_to_token),
+                                           **dataloader_cfg)
 
     def train_dataloader(self):
         return self.__create_dataloader(self.train_transforms_cfg, self.train_dataset_cfg, self.train_dataloader_cfg)
@@ -175,13 +159,4 @@ class TransformerOCRPLModule(pl.LightningModule):
                 self.__create_dataloader(self.val_transforms_cfg, self.val_dataset_cfg, self.val_dataloader_cfg)]
         else:
             assert False, 'incorrect val_dataset_cfg'
-
-        # self._val_dataset_names = [dl.dataset.name for dl in dataloaders]
-        # for ds_name in self._val_dataset_names:
-        #     for metric_cfg in deepcopy(self.metric_cfgs):
-        #         metric_name = metric_cfg.pop('name') if 'name' in metric_cfg else metric_cfg['type'].lower()
-        #         self._metric_names.add(metric_name)
-        #         metric_module = build_metric_from_cfg(metric_cfg.copy())
-        #         self.metrics.append(metric_module)
-        #         # self.metrics.append((ds_name, metric_name, metric_module))
         return dataloaders

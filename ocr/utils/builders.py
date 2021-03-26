@@ -4,7 +4,7 @@ import albumentations as Albumentations
 import albumentations.pytorch as AlbumentationsPytorch
 import pretrainedmodels
 import pytorch_lightning.callbacks as LightningCallbacks
-import pytorch_lightning.metrics as PLMetrics
+import torchmetrics as PLMetrics
 # import pytorch_loss as PytorchExtraLosses
 import timm
 import torch
@@ -125,7 +125,7 @@ def build_decoder_from_cfg(config):
 
 
 def build_metric_from_cfg(config):
-    return _base_transform_from_cfg(config, [PLMetrics, CustomMetrics])
+    return _base_transform_from_cfg(config, [CustomMetrics, PLMetrics])
 
 
 def build_optimizer_from_cfg(params, config):

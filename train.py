@@ -2,15 +2,13 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 import torch
-from detector_utils.utils.other import load_module
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.plugins.training_type import DDPPlugin
 from pytorch_lightning.utilities import rank_zero_only
 
 import wandb
 from ocr.utils.builders import build_lightning_module, build_callbacks_from_cfg
-from ocr.utils.common import seed_everything_deterministic, get_checkpoint_callback
+from ocr.utils.common import seed_everything_deterministic, get_checkpoint_callback, load_module
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -22,7 +20,7 @@ if __name__ == '__main__':
         assert False, f"Config not found: {args.config}"
 
     config = load_module(args.config)
-    if config.seed is not None:
+    if hasattr(config, 'seed') and config.seed is not None:
         seed_everything_deterministic(config.seed)
     if hasattr(config, 'mp_start_method'):
         torch.multiprocessing.set_start_method(config.mp_start_method)
@@ -43,11 +41,8 @@ if __name__ == '__main__':
             for config in config.trainer_cfg['callbacks']
         ]
 
-    ddp_plugin = DDPPlugin(find_unused_parameters=True)
-
     trainer = Trainer(
         logger=[logger],
-        plugins=[ddp_plugin],
         **config.trainer_cfg
     )
 
