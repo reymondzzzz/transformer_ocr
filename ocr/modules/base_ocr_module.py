@@ -118,18 +118,22 @@ class BaseOCRPLModule(pl.LightningModule):
         output = self.forward_val(images, len(tokens))
 
         tokens = tokens.permute(1, 0)
-        for metric in self.metrics:
-            metric(output, tokens)
+        for metric_name, metric_module in zip(self._metric_names, self.metrics):
+            metric_module.update(output, tokens)
 
     def validation_epoch_end(self, outputs):
         for metric_name, metric_module in zip(self._metric_names, self.metrics):
             self.log(f'{metric_name}', metric_module.compute(), prog_bar=True, on_epoch=True, logger=True)
+            metric_module.reset()
 
     def configure_optimizers(self):
         optimizer = build_optimizer_from_cfg(self.parameters(), self.optimizer_cfg.copy())
         if self.scheduler_cfg is not None:
             self.scheduler = build_lr_scheduler_from_cfg(optimizer, self.scheduler_cfg.copy())
-            lr_scheduler_info = {'scheduler': self.scheduler, **self.scheduler_update_params}
+            lr_scheduler_info = {
+                'scheduler': self.scheduler,
+                'name': 'lr',
+                **self.scheduler_update_params}
             return [optimizer], [lr_scheduler_info]
         return [optimizer]
 

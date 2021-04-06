@@ -10,15 +10,18 @@ class AttentionEncoder(nn.Module):
         self._feature_y = feature_y
         self.encode_emb = nn.Linear(self._input_channels + self._feature_x + self._feature_y, hidden_features,
                                     bias=False)
+        self.loc = self._precalc_loc()
+
+    def _precalc_loc(self):
+        x, y = torch.meshgrid(torch.arange(self._feature_x), torch.arange(self._feature_y))
+        w_loc = torch.nn.functional.one_hot(x, num_classes=self._feature_x)
+        h_loc = torch.nn.functional.one_hot(y, num_classes=self._feature_y)
+        loc = torch.cat([h_loc, w_loc], 2)
+        return loc.float()
 
     def _encode_coordinates(self, input):
         bs = input.size(0)
-        h, w = input.shape[2:4]
-        x, y = torch.meshgrid(torch.arange(w), torch.arange(h))
-        w_loc = torch.nn.functional.one_hot(x, num_classes=w)
-        h_loc = torch.nn.functional.one_hot(y, num_classes=h)
-        loc = torch.cat([h_loc, w_loc], 2)
-        loc = loc.unsqueeze(0).repeat(bs, 1, 1, 1)
+        loc = self.loc.unsqueeze(0).repeat(bs, 1, 1, 1)
         return torch.cat([input, loc.permute(0, 3, 1, 2).to(input.device)], dim=1)
 
     def forward(self, input):

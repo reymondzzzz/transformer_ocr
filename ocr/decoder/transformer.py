@@ -75,7 +75,7 @@ class TransformerDecoder(nn.Module):
             output = self.fc(output)
             out_token = output[i].argmax(1).unsqueeze(0)
             trg_tensor = torch.cat((trg_tensor, out_token), dim=0)
-        return trg_tensor
+        return trg_tensor.permute(1, 0)
 
     def train_forward(self, src, trg):
         if self.trg_mask is None or self.trg_mask.size(0) != len(trg):

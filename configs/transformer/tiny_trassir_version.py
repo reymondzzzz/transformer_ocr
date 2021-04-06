@@ -1,18 +1,16 @@
+#seed = 42
 gpus = [0, 1]
-batch_size = 256
-epochs = 1000
-img_side_size = 96
+batch_size = 32
+epochs = 500
+img_side_size = 128
 sequence_size = 14
 num_workers = 12 // len(gpus)
 
 vocab = '0123456789abcdefghijklmnopqrstuvwxyzäüö'
 letters = ['pad', 'sos'] + list(vocab) + ['eos']
-hidden_features = 64
-train_dataset_len = 30138
+hidden_features = 128
+train_dataset_len = 39409
 debug = False
-
-dataset_path = '/home/kstarkov/ml/datasets/lpr4_images'
-lpr_resources = '/home/kstarkov/t1s/tech1lpr/lpr_resources'
 
 trainer_cfg = dict(
     gpus=gpus,
@@ -20,9 +18,10 @@ trainer_cfg = dict(
     callbacks=[
         dict(type='LearningRateMonitor', logging_interval='step'),
         dict(type='ModelCheckpoint', save_top_k=5, verbose=True, mode='max',
-             monitor='val_accuracy', dirpath='./results/attention/',
+             monitor='val_accuracy', dirpath='./results/transformer/',
              filename='{epoch:02d}_{val_accuracy:.4f}')
     ],
+    resume_from_checkpoint=None,
     benchmark=True,
     deterministic=True,
     terminate_on_nan=True,
@@ -35,32 +34,30 @@ wandb_cfg = dict(
     name=f'{__file__.split("/")[-2].replace(".py", "")}_{__file__.split("/")[-1].replace(".py", "")}_{img_side_size}_{batch_size}_ep{epochs}',
     project='ocr',
     entity='dssl',
-    tags=['attention']
+    tags=['transformer']
 )
 
 backbone_cfg = dict(
-    type='ConvNet',
+    type='RepVGG_A0',
+    deploy=False
+)
+
+head_cfg = dict(
+    type='ConvHead',
+    output_channels=hidden_features
 )
 
 decoder_cfg = dict(
-    type='BahdanauAttnDecoderRNN',
+    type='TransformerDecoder',
     hidden_features=hidden_features,
     vocab=letters
 )
 
-encoder_cfg = dict(
-    type='AttentionEncoder',
-    hidden_features=hidden_features,
-    feature_x=img_side_size // 4,
-    feature_y=img_side_size // 4,
-)
-
 loss_cfgs = [
-    dict(type='NLLLoss',
-         name='nll_loss',
-         ignore_index=0  # pad class
-         )
+    dict(type='LabelSmoothedCE',
+         name='nll_loss')
 ]
+
 
 metric_cfgs = [
     dict(type='AccuracyWithIgnoreClasses', ignore_classes=0, name='val_accuracy'),
@@ -90,7 +87,7 @@ killer_transforms = dict(
     ], p=0.1
 )
 
-scale_min, scale_max = 0.7, 0.99
+scale_min, scale_max = 0.8, 0.99
 real_transforms = dict(type='Compose', transforms=[
     # TODO 3d rotate
     dict(type='OneOf', transforms=[
@@ -98,15 +95,15 @@ real_transforms = dict(type='Compose', transforms=[
         dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=1, p=1.),
         dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=4, p=1.)
     ], p=0.7),
-    dict(type='RandomBrightnessContrast', brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2),
-         p=0.5),
-    dict(type='RGBShift', r_shift_limit=(10, 20), g_shift_limit=(10, 20), b_shift_limit=(10, 20),
-         p=0.7),
-    dict(type='OneOf', transforms=[
-        dict(type='MotionBlur', p=1.),
-        dict(type='Blur', blur_limit=3, p=1.),
-        dict(type='MedianBlur', blur_limit=3, p=1.)
-    ], p=0.2),
+    # dict(type='RandomBrightnessContrast', brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2),
+    #      p=0.5),
+    # dict(type='RGBShift', r_shift_limit=(10, 20), g_shift_limit=(10, 20), b_shift_limit=(10, 20),
+    #      p=0.7),
+    # dict(type='OneOf', transforms=[
+    #     dict(type='MotionBlur', blur_limit=3, p=1.),
+    #     dict(type='Blur', blur_limit=3, p=1.),
+    #     dict(type='MedianBlur', blur_limit=3, p=1.)
+    # ], p=0.2),
     dict(type='SeriesTransformation',
          series_size=0,  # series_size,
          pitch_angle=0.05,
@@ -133,6 +130,8 @@ train_transforms_cfg = dict(
         type='Compose', transforms=[
             dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size)),
             dict(type='ToGray', p=0.2),
+            # dict(type='IAAAdditiveGaussianNoise', loc=0, scale=(64.0, 64.0), p=0.5),
+            # dict(type='IAASharpen', alpha=(0, 1.0), lightness=(0.5, 4.0), p=0.5),
             dict(type='ChannelShuffle', p=0.2),
             dict(type='MotionBlur', blur_limit=3, p=1),
             dict(type='PadIfNeeded', min_width=img_side_size, min_height=img_side_size, value=(128, 128, 128),
@@ -174,7 +173,7 @@ val_transforms_cfg = dict(
 train_dataset_cfg = [
     dict(
         type='RealDataset',
-        dataset_path=dataset_path,
+        dataset_path='/home/kstarkov/ml/datasets/lpr4_images',
         subset='train',
         vocab=vocab,
         debug=debug,
@@ -183,11 +182,11 @@ train_dataset_cfg = [
     ),
     dict(
         type='FakeDataset',
-        capacity=4637,  # len(real_dataset) * 0.2
+        capacity=13908,  # len(real_dataset) * 0.6
         name='fake_dataset',
         debug=debug,
         generator_config=dict(
-            lpr_resources=lpr_resources,
+            lpr_resources='/home/kstarkov/t1s/tech1lpr/lpr_resources',
             most_popular_templates=dict(
                 ro_type1_subtype1_lines1=0.04,
                 ro_type1_subtype2_lines1=0.04,
@@ -212,7 +211,7 @@ train_dataset_cfg = [
     dict(
         type='EmptyDataset',
         debug=debug,
-        root_path=dataset_path,
+        root_path='/home/kstarkov/ml/datasets/lpr4_images',
         capacity=2318,  # len(real_dataset) * 0.1,
         name='empty_dataset'
     )
@@ -220,7 +219,7 @@ train_dataset_cfg = [
 
 val_dataset_cfg = dict(
     type='RealDataset',
-    dataset_path=dataset_path,
+    dataset_path='/home/kstarkov/ml/datasets/lpr4_images',
     subset='val',
     vocab=vocab,
     lines_allowed=[1, 2]
@@ -241,35 +240,30 @@ val_dataloader_cfg = dict(
 )
 
 optimizer_cfg = dict(
-    type='Adam',
-    lr=5e-3 * len(gpus),
+    type='RangerAdaBelief',
+    lr=1e-3 * len(gpus)
 )
-
-def lr_lambda(epoch):
-    if epoch < 30:
-        return 1
-    elif epoch < 80:
-        return 0.5
-    else:
-        return 0.1
-
 scheduler_cfg = dict(
-    type='LambdaLR',
-    lr_lambda=lr_lambda
+    type='CyclicLR',
+    base_lr=1e-3 * len(gpus),
+    max_lr=1e-2 * len(gpus),
+    step_size_up=int(train_dataset_len // batch_size * (epochs * 0.1)),
+    mode='triangular2',
+    cycle_momentum=False,
 )
-
 scheduler_update_params = dict(
-    interval='epoch',
+    interval='step',
     frequency=1
 )
 
 module_cfg = dict(
-    type='AttentionOCRPLModule',
+    type='BaseOCRPLModule',
     vocab=letters,
     sequence_size=sequence_size,
     backbone_cfg=backbone_cfg,
+    head_cfg=head_cfg,
     decoder_cfg=decoder_cfg,
-    encoder_cfg=encoder_cfg,
+    # loss_head_cfg=loss_head_cfg,
     loss_cfgs=loss_cfgs,
     metric_cfgs=metric_cfgs,
     train_transforms_cfg=train_transforms_cfg,

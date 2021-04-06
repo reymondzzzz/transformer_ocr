@@ -36,7 +36,7 @@ def get_font(path: Path):
 def qimage_to_nparr(image):
     '''  Converts a QImage into an opencv MAT format  '''
 
-    image = image.convertToFormat(QImage.Format.Format_BGR888)
+    image = image.convertToFormat(QImage.Format.Format_RGB888)
 
     width = image.width()
     height = image.height()
@@ -192,9 +192,9 @@ if __name__ == '__main__':
         }
     })
     while True:
-        image, text, bbox, lines = generator.generate_one_plate()
-        print(text, lines)
-        # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        item = generator.generate_one_plate()
+        print(item.text, item.lines)
+        image = cv2.cvtColor(item.image, cv2.COLOR_RGB2BGR)
         cv2.imshow('plate', image)
         k = cv2.waitKey(0) & 0xFF
         if k == 27:
