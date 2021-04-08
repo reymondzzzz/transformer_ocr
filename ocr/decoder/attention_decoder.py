@@ -28,7 +28,7 @@ class BahdanauAttnDecoderRNN(nn.Module):
         return torch.eye(num_classes)[y]
 
     def emb(self, symbols):
-        one_hot = self._to_one_hot(symbols, num_classes=self.output_size)
+        one_hot = self._to_one_hot(symbols, num_classes=self.output_size).to(symbols.device)
         out = self.embedding(one_hot.float())
         return out
 
