@@ -88,11 +88,11 @@ class SeriesTransformation(ImageOnlyTransform):
         self.series_size = series_size
         self.output_img_prefix = output_img_prefix
         # TODO fix this angles and move those arguments to albu params list
-        self.pitch_angle = pitch_angle
-        self.roll_angle = roll_angle
-        self.yaw_angle = yaw_angle
+        self.pitch_angle = self._to_tuple(pitch_angle)
+        self.roll_angle = self._to_tuple(roll_angle)
+        self.yaw_angle = self._to_tuple(yaw_angle)
         self.f = 1
-        self.dx, self.dy = dx, dy  # 5, 5
+        self.dx, self.dy = self._to_tuple(dx), self._to_tuple(dy)  # 5, 5
         self.scale = self._to_tuple(scale)
         self.background_color = (128, 128, 128)
 
@@ -103,11 +103,11 @@ class SeriesTransformation(ImageOnlyTransform):
             return (-value, value)
 
     def _transform(self, img):
-        pitch_angle = math.radians(random.choice([-self.pitch_angle, self.pitch_angle]))
-        roll_angle = math.radians(random.choice([-self.roll_angle, self.roll_angle]))
-        yaw_angle = math.radians(random.choice([-self.yaw_angle, self.yaw_angle]))
-        dx, dy = random.choice([-self.dx, self.dx]), random.choice([-self.dy, self.dy])
-        scale = 1 + random.choice(list(self.scale))
+        pitch_angle = math.radians(random.uniform(self.pitch_angle[0], self.pitch_angle[1]))
+        roll_angle = math.radians(random.uniform(self.roll_angle[0], self.roll_angle[1]))
+        yaw_angle = math.radians(random.uniform(self.yaw_angle[0], self.yaw_angle[1]))
+        dx, dy = random.uniform(self.dx[0], self.dx[1]), random.uniform(self.dy[0], self.dy[1])
+        scale = 1 + random.uniform(self.scale[0], self.scale[1])
 
         h, w = img.shape[:2]
 

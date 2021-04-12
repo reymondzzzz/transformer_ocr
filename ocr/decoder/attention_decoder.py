@@ -51,12 +51,13 @@ class BahdanauAttnDecoderRNN(nn.Module):
         output = F.relu(output)
         output, hidden = self.gru(output, hidden)
 
-        output = F.log_softmax(self.out(output[0]), dim=1)
+        output = self.out(output[0])
+        output = F.log_softmax(output, dim=1)
         return output, hidden, attn_weights
 
     def _decode_logits(self, logits):
-        symbols = logits.topk(1)[1]
-        return symbols
+        confs, symbols = logits.exp().topk(1)
+        return confs, symbols
 
     def train_forward(self, encoder_outputs, target_seq):
         batch_size = encoder_outputs.size(1)
@@ -73,7 +74,8 @@ class BahdanauAttnDecoderRNN(nn.Module):
         else:
             for i in range(1, target_seq.size(0)):
                 output, hidden, attn_weights = self.forward_step(current_symbols, hidden, encoder_outputs)
-                current_symbols = self._decode_logits(output).squeeze(1).detach()
+                _, current_symbols = self._decode_logits(output)
+                current_symbols = current_symbols.squeeze(1).detach()
                 pre_output_vectors.append(output.unsqueeze(1))
 
         pre_output_vectors = torch.cat(pre_output_vectors, dim=1)
@@ -87,15 +89,17 @@ class BahdanauAttnDecoderRNN(nn.Module):
             'sos']
 
         coords = []
+        confs = []
         for i in range(max_seq_size - 1):
             current_symbols = sequences[:, i]
             output, hidden, attn_weights = self.forward_step(current_symbols, hidden, encoder_outputs)
             coords.append(attn_weights.view(batch_size, -1).max(1)[1].unsqueeze(1))
-            last_symbols = self._decode_logits(output)
+            last_confs, last_symbols = self._decode_logits(output)
+            confs.append(last_confs)
             sequences = torch.cat((sequences, last_symbols), dim=1)
 
         # texts, coordinates of symbol centers by feature map
-        return sequences, torch.cat(coords, dim=1)
+        return sequences, torch.cat(confs, dim=1), torch.cat(coords, dim=1)
 
     def init_hidden(self, batch_size):
         result = torch.zeros(1, batch_size, self.hidden_size)

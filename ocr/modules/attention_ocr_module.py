@@ -17,7 +17,7 @@ class AttentionOCRPLModule(BaseOCRPLModule):
 
     def validation_step(self, batch, batch_idx, dataset_idx=0):
         images, tokens, lengths = batch
-        output, _ = self.forward_val(images, len(tokens))
+        output, _, _ = self.forward_val(images, len(tokens))
 
         tokens = tokens.permute(1, 0)
         for metric_name, metric_module in zip(self._metric_names, self.metrics):

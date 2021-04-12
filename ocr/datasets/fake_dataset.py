@@ -1,3 +1,5 @@
+import numpy as np
+import torch
 from torch.utils.data import Dataset
 
 from .fake_generator import FakeGenerator
@@ -20,6 +22,8 @@ class FakeDataset(Dataset):
         return self._capacity
 
     def __getitem__(self, item):
+        np.random.seed(int(torch.utils.data.get_worker_info().seed) % (2 ** 32 - 1))
+
         item = self._generator.generate_one_plate()
         res = self._transforms(image=item.image, text=item.text)
         if self._to_debug:

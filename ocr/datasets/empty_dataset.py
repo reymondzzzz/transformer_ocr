@@ -5,6 +5,7 @@ from typing import List, Tuple, Any, Union
 
 import cv2
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 
 from .struct import AnnotationItem
@@ -28,6 +29,8 @@ class EmptyDataset(Dataset):
         return len(self._dataset)
 
     def __getitem__(self, idx):
+        np.random.seed(int(torch.utils.data.get_worker_info().seed) % (2 ** 32 - 1))
+
         item = self._dataset[idx]
         if self.ram_cache and item.image is None:
             img = load_image_with_cropping(item)

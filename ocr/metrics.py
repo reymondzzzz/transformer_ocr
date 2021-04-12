@@ -78,3 +78,21 @@ class PhonemeErrorRate(Metric):
 
     def compute(self):
         return self.dists / self.total_seq
+
+
+class SymbolRate(Metric):
+    def __init__(self, token):
+        super().__init__(compute_on_step=False)
+        self.token = token
+        self.add_state('correct', default=torch.tensor(0.), dist_reduce_fx="sum")
+        self.add_state('total', default=torch.tensor(0), dist_reduce_fx="sum")
+
+    def update(self, pred_seq, gt_seq) -> None:
+        gt_mask = gt_seq == self.token
+        pred_mask = pred_seq == self.token
+        res_mask = torch.logical_and(gt_mask, pred_mask)
+        self.correct += res_mask.sum()
+        self.total += pred_mask.sum()
+
+    def compute(self):
+        return self.correct / self.total

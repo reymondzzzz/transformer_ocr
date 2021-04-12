@@ -1,6 +1,6 @@
 gpus = [0, 1]
 batch_size = 256
-epochs = 1000
+epochs = 300
 img_side_size = 96
 sequence_size = 14
 num_workers = 12 // len(gpus)
@@ -19,7 +19,7 @@ trainer_cfg = dict(
     max_epochs=epochs,
     callbacks=[
         dict(type='LearningRateMonitor', logging_interval='step'),
-        dict(type='ModelCheckpoint', save_top_k=5, verbose=True, mode='max',
+        dict(type='ModelCheckpoint', save_top_k=-1, verbose=False, mode='max',
              monitor='val_accuracy', dirpath='./results/attention/',
              filename='{epoch:02d}_{val_accuracy:.4f}')
     ],
@@ -65,6 +65,7 @@ loss_cfgs = [
 metric_cfgs = [
     dict(type='AccuracyWithIgnoreClasses', ignore_classes=0, name='val_accuracy'),
     dict(type='PhonemeErrorRate', name='val_PER', letters=letters),
+    dict(type='SymbolRate', vocab=list(vocab) + ['eos'], name_prefix='symbol_rate_val'),
 ]
 
 killer_scale_min, killer_scale_max = 20 / img_side_size, 30 / img_side_size
@@ -90,13 +91,13 @@ killer_transforms = dict(
     ], p=0.1
 )
 
-scale_min, scale_max = 0.7, 0.99
+real_scale_min, real_scale_max = 0.75, 0.99
+
 real_transforms = dict(type='Compose', transforms=[
-    # TODO 3d rotate
     dict(type='OneOf', transforms=[
-        dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=0, p=1.),
-        dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=1, p=1.),
-        dict(type='Downscale', scale_min=scale_min, scale_max=scale_max, interpolation=4, p=1.)
+        dict(type='Downscale', scale_min=real_scale_min, scale_max=real_scale_max, interpolation=0, p=1.),
+        dict(type='Downscale', scale_min=real_scale_min, scale_max=real_scale_max, interpolation=1, p=1.),
+        dict(type='Downscale', scale_min=real_scale_min, scale_max=real_scale_max, interpolation=4, p=1.)
     ], p=0.7),
     dict(type='RandomBrightnessContrast', brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2),
          p=0.5),
@@ -107,18 +108,17 @@ real_transforms = dict(type='Compose', transforms=[
         dict(type='Blur', blur_limit=3, p=1.),
         dict(type='MedianBlur', blur_limit=3, p=1.)
     ], p=0.2),
-    dict(type='SeriesTransformation',
-         series_size=0,  # series_size,
-         pitch_angle=0.05,
-         roll_angle=0.05,
-         scale=(-0.1, -0.1), dx=0, dy=0,
-         yaw_angle=5, p=1),
+    # dict(type='SeriesTransformation',
+    #      series_size=0,  # series_size,
+    #      pitch_angle=0.05,
+    #      roll_angle=0.05,
+    #      scale=(-0.1, -0.1), dx=0, dy=0,
+    #      yaw_angle=5, p=1),
 ], p=0.9)
-
 train_transforms_cfg = dict(
     real_dataset=dict(
         type='Compose', transforms=[
-            dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size)),
+            dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size), interpolation=3),
             dict(type='PadIfNeeded', min_width=img_side_size, min_height=img_side_size, value=(128, 128, 128),
                  border_mode=0),
             dict(type='OneOf', transforms=[
@@ -131,19 +131,27 @@ train_transforms_cfg = dict(
         ]),
     fake_dataset=dict(
         type='Compose', transforms=[
-            dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size)),
-            dict(type='ToGray', p=0.2),
-            dict(type='ChannelShuffle', p=0.2),
-            dict(type='MotionBlur', blur_limit=3, p=1),
+            dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size), interpolation=3),
+            dict(type='OneOf', transforms=[
+                dict(type='Compose', transforms=[
+                    dict(type='ToGray', p=1)
+                ]),
+                dict(type='Compose', transforms=[
+                    dict(type='ToGray', p=1),
+                    dict(type='InvertImg', p=1)
+                ]),
+            ], p=0.1),
+            dict(type='ChannelShuffle', p=0.1),
+            dict(type='ColorJitter', brightness=0.3, contrast=0.5, saturation=0.5, hue=0.0, p=1),
             dict(type='PadIfNeeded', min_width=img_side_size, min_height=img_side_size, value=(128, 128, 128),
                  border_mode=0),
             dict(type='SeriesTransformation',
                  series_size=0,  # series_size,
-                 pitch_angle=0.05,
-                 roll_angle=0.05,
-                 scale=0.0, dx=0, dy=0,
+                 pitch_angle=0.5,
+                 roll_angle=0.5,
+                 scale=[-0.15, -0.15], dx=0, dy=0,
                  yaw_angle=5, p=1),
-            dict(type='ShiftScaleRotate', shift_limit=0.02, scale_limit=0.02, rotate_limit=5,
+            dict(type='ShiftScaleRotate', shift_limit=0.02, scale_limit=0.00, rotate_limit=5,
                  border_mode=0, value=(128, 128, 128), p=1),
             dict(type='Normalize', mean=(0., 0., 0.), std=(1., 1., 1.)),
             dict(type='Tokenizer', vocab=letters, seq_size=sequence_size),
@@ -151,7 +159,7 @@ train_transforms_cfg = dict(
         ]),
     empty_dataset=dict(
         type='Compose', transforms=[
-            dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size)),
+            dict(type='LongestMaxSize', max_size=max(img_side_size, img_side_size), interpolation=3),
             dict(type='PadIfNeeded', min_width=img_side_size, min_height=img_side_size, value=(128, 128, 128),
                  border_mode=0),
             real_transforms,
@@ -160,6 +168,7 @@ train_transforms_cfg = dict(
             dict(type='ToTensorV2')
         ]),
 )
+
 
 val_transforms_cfg = dict(
     type='Compose', transforms=[
@@ -195,17 +204,21 @@ train_dataset_cfg = [
                 ro_type2_subtype1_lines1=0.04,
                 ro_type3_subtype1_lines1=0.04,
 
-                ru_type5_subtype1_lines1=0.1333,
-                ru_type5_subtype2_lines1=0.1333,
-                ru_type5_subtype3_lines1=0.1333,
-                ru_type6_subtype1_lines1=0.1,
-                ru_type7_subtype1_lines1=0.1,
+                ru_type5_subtype1_lines1=0.08,
+                ru_type5_subtype2_lines1=0.08,
+                ru_type5_subtype3_lines1=0.08,
+                ru_type6_subtype1_lines1=0.06,
+                ru_type7_subtype1_lines1=0.06,
             ),
             most_popular_letters={
-                'x': .25,
-                'y': .25,
-                '7': .3,
-                'z': .25,
+                'x': .1,
+                'y': .1,
+                '7': .12,
+                'z': .1,
+                '8': .1,
+                'b': .1,
+                'q': .1,
+                'g': .1,
             }
         )
     ),

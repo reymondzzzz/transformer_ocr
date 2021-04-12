@@ -55,9 +55,9 @@ class BaseOCRPLModule(pl.LightningModule):
         self.save_hyperparameters()
 
         self.scheduler = None  # Can be useful for LR logging in the progress bar
-        self._build_models()
         self.sequence_size = sequence_size
         self.letter_to_token, self.token_to_letter = tokenize_vocab(vocab)
+        self._build_models()
 
     def _build_models(self):
         self.backbone, in_ch = build_backbone_from_cfg(self.backbone_cfg.copy())
@@ -77,9 +77,20 @@ class BaseOCRPLModule(pl.LightningModule):
         self._metric_names = []
         for metric_cfg in deepcopy(self.metric_cfgs):
             metric_name = metric_cfg.pop('name') if 'name' in metric_cfg else metric_cfg['type'].lower()
-            self._metric_names.append(metric_name)
-            metric_module = build_metric_from_cfg(metric_cfg.copy())
-            self.metrics.append(metric_module)
+            if metric_cfg['type'] != 'SymbolRate':
+                self._metric_names.append(metric_name)
+                metric_module = build_metric_from_cfg(metric_cfg.copy())
+                self.metrics.append(metric_module)
+            else:
+                vocab = metric_cfg.pop('vocab')
+                name_prefix = metric_cfg.pop('name_prefix') if 'name_prefix' in metric_cfg else ''
+                for v in vocab:
+                    cfg = deepcopy(metric_cfg)
+                    metric_name = f'{name_prefix}_{v}'
+                    cfg['token'] = self.letter_to_token[v]
+                    self._metric_names.append(metric_name)
+                    metric_module = build_metric_from_cfg(cfg.copy())
+                    self.metrics.append(metric_module)
 
     def forward_val(self, src, sequence_size):
         x = self.backbone(src)
@@ -123,7 +134,10 @@ class BaseOCRPLModule(pl.LightningModule):
 
     def validation_epoch_end(self, outputs):
         for metric_name, metric_module in zip(self._metric_names, self.metrics):
-            self.log(f'{metric_name}', metric_module.compute(), prog_bar=True, on_epoch=True, logger=True)
+            if not metric_name.startswith('symbol_rate_'):
+                self.log(f'{metric_name}', metric_module.compute(), prog_bar=True, on_epoch=True, logger=True)
+            else:
+                self.log(f'{metric_name}', metric_module.compute(), prog_bar=False, on_epoch=True, logger=True)
             metric_module.reset()
 
     def configure_optimizers(self):

@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from typing import List, Union
 
+import numpy as np
+import torch
 from torch.utils.data import Dataset
 
 from ocr.datasets.struct import AnnotationItem
@@ -31,6 +33,8 @@ class RealDataset(Dataset):
         return len(self._dataset)
 
     def __getitem__(self, idx):
+        np.random.seed(int(torch.utils.data.get_worker_info().seed) % (2 ** 32 - 1))
+
         item = self._dataset[idx]
         if self.ram_cache and item.image is None:
             img = load_image_with_cropping(item)
